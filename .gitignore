@@ -1,0 +1,2 @@
+# Ignore the settings.yml file because it will have sensitive data in it.
+config/settings.yml

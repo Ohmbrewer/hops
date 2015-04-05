@@ -1,0 +1,4 @@
+# Rename this file to settings.yml and replace the placeholders with your settings.
+:spark:
+  :device_id: DEVICE_ID_FOR_YOUR_CORE
+  :access_token: ACCESS_TOKEN_FOR_YOUR_USER_OR_APP
