@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-require 'lib/load_config.rb'
+require_relative 'lib/load_config.rb'
 require 'ruby_spark'
 hops_basedir = "#{File.dirname(__FILE__)}/../../.."
 config_settings = "#{hops_basedir}/config/settings.yml"
