@@ -1,4 +1,4 @@
-require 'lib/load_config.rb'
+require_relative 'lib/load_config.rb'
 require 'ruby_spark'
 require 'rspec/expectations'
 
