@@ -21,7 +21,12 @@ String FULL_BLAST = "0,0,0";
 String BLACKOUT = "255,255,255";
 
 // Provide the pump ID
-int pumpID = 1;
+String pumpID = "1";
+
+// Event stream names
+String error_stream = "rhizome_errors";
+String pump_stream = "pumps/1"; // Probably want to actually set this programmatically in the real world
+
 
 /**
  * Sets the LED intensity values according to the global variables.
@@ -56,7 +61,7 @@ void setup() {
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(GREEN_LED_PIN, OUTPUT);
   pinMode(BLUE_LED_PIN, OUTPUT);
-  Spark.function("pump", pumpCtrl);
+  Spark.function("pumps", pumpCtrl);
   
   // For good measure, let's also make sure the LED is off when we start:
   refreshLEDs();
@@ -102,13 +107,13 @@ int toggleLEDs(String command) {
     if (command.equalsIgnoreCase("on")) {
         turnOnLEDs();
         return 1;
-    }
-    else if (command.equalsIgnoreCase("off")) {
+    } else if (command.equalsIgnoreCase("off")) {
         turnOffLEDs();
         return 0;
-    }
-    else {
-        return -1;
+    } else {
+        String jsonErrorMsg = "{ \"msg\": \"Toggle did not work...\", \"command\": \"" + command + "\"}";
+        Spark.publish(error_stream, jsonErrorMsg, 60, PRIVATE);
+        return -136;
     }
 }
 
@@ -127,14 +132,13 @@ void loop() {}
  */
 void publishStatus(String state, String speed) {
     unsigned long now = millis();
-    String eventName = "pumps/" + pumpID;
-    String jsonStatusA = "{ \"state\": \"" + state + "\", \"speed\": \"" + speed + "\"}";
-    String jsonStatusB = "{ \"state\": \"" + state + "\"}";
+    String jsonStatusA = "{ \"id\": \"" + pumpID + "\", \"state\": \"" + state + "\", \"speed\": \"" + speed + "\"}";
+    String jsonStatusB = "{ \"id\": \"" + pumpID + "\", \"state\": \"" + state + "\"}";
     
     if(speed != NULL) {
-        Spark.publish(eventName, jsonStatusA, 60, PRIVATE);
+        Spark.publish(pump_stream, jsonStatusA, 60, PRIVATE);
     } else {
-        Spark.publish(eventName, jsonStatusB, 60, PRIVATE);
+        Spark.publish(pump_stream, jsonStatusB, 60, PRIVATE);
     }
     
     lastPublish = now;
@@ -152,14 +156,20 @@ void publishStatus(String state, String speed) {
  * @param command The current state (on/off) and speed (1..4), comma-delimited and case-insensitive
  */
 int pumpCtrl(String command) {
-    char * params = new char[command.length() + 1];
     int colorSuccess = -1;
     int toggleSuccess = -1;
-
+    char * params = new char[command.length() + 1];
     strcpy(params, command.c_str());
-    String state = String(strtok(params, ","));
+    
+    String desiredPumpID = String(strtok(params, ","));
+    String state = String(strtok(NULL, ","));
     String speed = String(strtok(NULL, ","));
 
+    if((desiredPumpID == NULL) || (!desiredPumpID.equalsIgnoreCase(pumpID))) {
+        // Not doing anything with it right now, but we'll error out if it isn't provided properly
+        return -9000;
+    }
+    
     if(speed != NULL) {
         // Set the color
         switch (speed.toInt()) {
@@ -178,6 +188,8 @@ int pumpCtrl(String command) {
           default:
             setColor(FULL_BLAST);
             colorSuccess = -2;
+            String jsonErrorMsg = "{ \"msg\": \"Invalid color supplied...\", \"speed\": \"" + speed + "\"}";
+            Spark.publish(error_stream, jsonErrorMsg, 60, PRIVATE);
         }
     }
     
@@ -187,9 +199,9 @@ int pumpCtrl(String command) {
     }
     
     publishStatus(state, speed);
-    if(colorSuccess > 0 && toggleSuccess != -1) {
+    if(colorSuccess > 0 && toggleSuccess != -136) {
         return colorSuccess;
     }
     
-    return -1;
+    return toggleSuccess;
 }
