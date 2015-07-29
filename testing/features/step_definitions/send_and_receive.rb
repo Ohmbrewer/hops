@@ -16,7 +16,6 @@ Then(/^the (.*) variable reads:$/) do |spark_var, msg_table|
   expect(instance_variable_get("@#{spark_var}")).to eq msg
 end
 
-
 When(/^I send this message to the Rhizome's Pump (\d+) function:$/) do |pump_id, args_table|
   # Unfortunately, order matters... we want ID,STATE,SPEED
   # ID and STATE are required, speed is not.
@@ -24,4 +23,8 @@ When(/^I send this message to the Rhizome's Pump (\d+) function:$/) do |pump_id,
   @last_args_str += ",#{args_table.rows_hash['speed']}" unless args_table.rows_hash['speed'].nil?
 
   expect { @rhizome.function('pumps', @last_args_str) }.to_not raise_exception
+end
+
+And(/^I wait (\d+) seconds$/) do |secs|
+  sleep secs.to_i
 end
