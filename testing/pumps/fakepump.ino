@@ -1,49 +1,50 @@
 #define publish_delay 10000
 
-unsigned int lastPublish = 0;
-
-// // First, let's create our "shorthand" for the pins:
-const int RED_LED_PIN = A4;
-const int GREEN_LED_PIN = A1;
-const int BLUE_LED_PIN = A0;
-
-// Used to store the intensity level of the individual LEDs, intitialized to off (255)
-int redIntensity = 255;
-int greenIntensity = 255;
-int blueIntensity = 255;
+// Used to store the intensity level of the individual LEDs, intitialized to off (0)
+int redIntensity = 0;
+int greenIntensity = 0;
+int blueIntensity = 0;
 
 // Provide some named default colors
-String RED = "0,255,255";
-String YELLOW = "0,0,255";
-String BLUE = "255,255,0";
-String GREEN = "255,0,255";
-String FULL_BLAST = "0,0,0";
-String BLACKOUT = "255,255,255";
+String RED = "255,0,0";
+String YELLOW = "255,255,0";
+String BLUE = "0,0,255";
+String GREEN = "0,255,0";
+String FULL_BLAST = "255,255,255";
+String BLACKOUT = "0,0,0";
 
-// Provide the pump ID
-String pumpID = "1";
+// We'll also map the default colors to pump speeds, for a nice visual
+const int isRed    = 1;
+const int isYellow = 2;
+const int isGreen  = 3;
+const int isBlue   = 4;
+const int isOut    = 0;
+
+// Here's some things that we need to keep track of:
+String pumpID   = "1";
+unsigned int lastPublish = 0;
+int stopTime    = -1;
+String state    = "off";
+String speed    = "-1";
 
 // Event stream names
 String error_stream = "rhizome_errors";
+String debug_stream = "rhizome_debug";
 String pump_stream = "pumps/1"; // Probably want to actually set this programmatically in the real world
-
 
 /**
  * Sets the LED intensity values according to the global variables.
  */
 void refreshLEDs() {
-    analogWrite(RED_LED_PIN, redIntensity);
-    analogWrite(GREEN_LED_PIN, greenIntensity);
-    analogWrite(BLUE_LED_PIN, blueIntensity);
+    RGB.color(redIntensity, greenIntensity, blueIntensity);
 }
 
 /**
- * Sets the LED intensity values to off (255).
+ * Sets the LED intensity values to off (0).
  */
 void turnOffLEDs() {
-    analogWrite(RED_LED_PIN, 255);
-    analogWrite(GREEN_LED_PIN, 255);
-    analogWrite(BLUE_LED_PIN, 255);
+    RGB.color(0, 0, 0);
+    state = "off";
 }
 
 /**
@@ -51,6 +52,7 @@ void turnOffLEDs() {
  */
 void turnOnLEDs() {
     refreshLEDs();
+    state = "on";
 }
 
 /**
@@ -58,9 +60,7 @@ void turnOnLEDs() {
  */
 void setup() {
   //set LED pins to outputs
-  pinMode(RED_LED_PIN, OUTPUT);
-  pinMode(GREEN_LED_PIN, OUTPUT);
-  pinMode(BLUE_LED_PIN, OUTPUT);
+  RGB.control(true);
   Spark.function("pumps", pumpCtrl);
   
   // For good measure, let's also make sure the LED is off when we start:
@@ -72,6 +72,8 @@ void setup() {
  * @param command The comma-delimited RGB value string
  */
 int setColor(String command) {
+    String jsonDebugMsg = "{ \"msg\": \"Attempting to set color!\", \"command\": \"" + command + "\"}";
+    Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
     if (command) {
         char inputStr[64];
         command.toCharArray(inputStr,64);
@@ -96,14 +98,8 @@ int setColor(String command) {
  * @param command Either "on" or "off". Not case sensitive.
  */
 int toggleLEDs(String command) {
-    /* Spark.functions always take a string as an argument and return an integer.
-    Since we can pass a string, it means that we can give the program commands on how the function should be used.
-    In this case, telling the function "on" will turn the LED on and telling it "off" will turn the LED off.
-    Then, the function returns a value to us to let us know what happened.
-    In this case, it will return 1 for the LEDs turning on, 0 for the LEDs turning off,
-    and -1 if we received a totally bogus command that didn't do anything to the LEDs.
-    */
-
+    String jsonDebugMsg = "{ \"msg\": \"Attempting to toggle LEDs!\", \"command\": \"" + command + "\"}";
+    Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
     if (command.equalsIgnoreCase("on")) {
         turnOnLEDs();
         return 1;
@@ -118,9 +114,78 @@ int toggleLEDs(String command) {
 }
 
 /**
- * Nothing to do here...
+ * Sets the "pump" speed, here represented by the LED.
+ * @param speed The provided pump speed
  */
-void loop() {}
+int setSpeed(String speedUpdate) {
+    String jsonDebugMsg = "{ \"msg\": \"Attempting to set pump speed!\", \"command\": \"" + speedUpdate + "\"}";
+    Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
+    int speedSuccess = -1;
+    if(speedUpdate != NULL) {
+        // Set the color
+        switch (speedUpdate.toInt()) {
+          case isRed:
+            speedSuccess = setColor(RED);
+            break;
+          case isYellow:
+            speedSuccess = setColor(YELLOW);
+            break;
+          case isGreen:
+            speedSuccess = setColor(GREEN);
+            break;
+          case isBlue:
+            speedSuccess = setColor(BLUE);
+            break;
+          case isOut:
+            // This code should make the color saved in memory equal to no light.
+            speedSuccess = setColor(BLACKOUT);
+            break;
+          default:
+            setColor(FULL_BLAST);
+            speedSuccess = -2;
+            String jsonErrorMsg = "{ \"msg\": \"Invalid color supplied...\", \"speed\": \"" + speedUpdate + "\"}";
+            Spark.publish(error_stream, jsonErrorMsg, 60, PRIVATE);
+        }
+    }
+    
+    if(speedSuccess == 1) {
+        speed = speedUpdate;
+    }
+    return speedSuccess;
+}
+
+/**
+ * Compares the current time against the stop time provided in the last instruction and kills the pump
+ * if we've reached quitting time.
+ */
+void checkForQuittingTime() {
+    // First of all, there's nothing to do if we aren't pumping. That'll happen if
+    // 1) Stop time < 0 (it starts at -1)
+    // 2) State == Off
+    if(stopTime > 0 || state.equalsIgnoreCase("on") ) {
+        if(Time.now() <= stopTime) {
+            int toggleSuccess = toggleLEDs("off");
+            String jsonErrorMsg = "{ \"msg\": \"Stopping time reached! Tried to stop the pump, but for some reason it did not stop!\","
+                                   " \"state\": \"" + state + "\", \"error_code\": \"" + toggleSuccess + "\"}";
+                                   
+            if(toggleSuccess != 0) {
+                // Pump failed to shut off
+                Spark.publish(error_stream, jsonErrorMsg, 60, PRIVATE);
+            } else {
+                // Success!
+                String jsonSuccessMsg = "{ \"msg\": \"Stopping time reached. Pump deactivated.\", \"state\": \"" + state + "\"}";
+                Spark.publish(error_stream, jsonSuccessMsg, 60, PRIVATE);
+            }
+        }
+    }
+}
+
+/**
+ * Nothing to do here but see if it's time to stop...
+ */
+void loop() {
+    // checkForQuittingTime();
+}
 
 //** Handlers **//
 
@@ -130,10 +195,10 @@ void loop() {}
  * @param state The current state (on/off)
  * @param speed The current speed (1..4)
  */
-void publishStatus(String state, String speed) {
+void publishStatus() {
     unsigned long now = millis();
-    String jsonStatusA = "{ \"id\": \"" + pumpID + "\", \"state\": \"" + state + "\", \"speed\": \"" + speed + "\"}";
-    String jsonStatusB = "{ \"id\": \"" + pumpID + "\", \"state\": \"" + state + "\"}";
+    String jsonStatusA = "{ \"id\": \"" + pumpID + "\", \"state\": \"" + state + "\", \"stopTime\":\"" + stopTime + "\", \"speed\": \"" + speed + "\"}";
+    String jsonStatusB = "{ \"id\": \"" + pumpID + "\", \"state\": \"" + state + "\", \"stopTime\":\"" + stopTime + "\"}";
     
     if(speed != NULL) {
         Spark.publish(pump_stream, jsonStatusA, 60, PRIVATE);
@@ -156,51 +221,44 @@ void publishStatus(String state, String speed) {
  * @param command The current state (on/off) and speed (1..4), comma-delimited and case-insensitive
  */
 int pumpCtrl(String command) {
-    int colorSuccess = -1;
-    int toggleSuccess = -1;
-    char * params = new char[command.length() + 1];
+    int    speedSuccess  = -1;
+    int    toggleSuccess = -1;
+    char * params        = new char[command.length() + 1];
     strcpy(params, command.c_str());
     
-    String desiredPumpID = String(strtok(params, ","));
-    String state = String(strtok(NULL, ","));
-    String speed = String(strtok(NULL, ","));
+    // Parse the parameters
+    String desiredPumpID  = String(strtok(params, ","));
+    String stateUpdate    = String(strtok(NULL, ","));
+    int stopTimeUpdate    = atoi(strtok(NULL, ","));
+    String speedUpdate    = "";
+    if(stopTimeUpdate > 0) {
+        // Let's try to avoid null pointer exceptions...
+        speedUpdate = "" + String(strtok(NULL, ",")); // Note that the quotes are a workaround for a known issue with the String class
+    }
 
     if((desiredPumpID == NULL) || (!desiredPumpID.equalsIgnoreCase(pumpID))) {
         // Not doing anything with it right now, but we'll error out if it isn't provided properly
         return -9000;
     }
     
-    if(speed != NULL) {
-        // Set the color
-        switch (speed.toInt()) {
-          case 1:
-            colorSuccess = setColor(RED);
-            break;
-          case 2:
-            colorSuccess = setColor(YELLOW);
-            break;
-          case 3:
-            colorSuccess = setColor(GREEN);
-            break;
-          case 4:
-            colorSuccess = setColor(BLUE);
-            break;
-          default:
-            setColor(FULL_BLAST);
-            colorSuccess = -2;
-            String jsonErrorMsg = "{ \"msg\": \"Invalid color supplied...\", \"speed\": \"" + speed + "\"}";
-            Spark.publish(error_stream, jsonErrorMsg, 60, PRIVATE);
-        }
-    }
+    // if(stateUpdate.equalsIgnoreCase("on") && (stopTimeUpdate < Time.now())) {
+    //     // You need to provide a stop time in the future...
+    //     return -Time.now();
+    // } else {
+    //     // Otherwise, go ahead and set the stop time
+    //     stopTime = stopTimeUpdate;
+    // }
+    
+    speedSuccess = setSpeed(speedUpdate);
     
     if(state != NULL) {
         // Toggle the LED, if appropriate
-        toggleSuccess = toggleLEDs(state);
+        toggleSuccess = toggleLEDs(stateUpdate);
     }
     
-    publishStatus(state, speed);
-    if(colorSuccess > 0 && toggleSuccess != -136) {
-        return colorSuccess;
+    publishStatus();
+    if(speedSuccess > 0 && toggleSuccess != -136) {
+        return speedSuccess;
     }
     
     return toggleSuccess;
