@@ -23,7 +23,7 @@ const int isOut    = 0;
 // Here's some things that we need to keep track of:
 String pumpID   = "1";
 unsigned int lastPublish = 0;
-int stopTime    = -1;
+String stopTime = "0";
 String state    = "off";
 String speed    = "-1";
 
@@ -72,8 +72,8 @@ void setup() {
  * @param command The comma-delimited RGB value string
  */
 int setColor(String command) {
-    String jsonDebugMsg = "{ \"msg\": \"Attempting to set color!\", \"command\": \"" + command + "\"}";
-    Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
+    // String jsonDebugMsg = "{ \"msg\": \"Attempting to set color!\", \"command\": \"" + command + "\"}";
+    // Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
     if (command) {
         char inputStr[64];
         command.toCharArray(inputStr,64);
@@ -94,12 +94,12 @@ int setColor(String command) {
 }
 
 /**
- * Parses a String of RGB values and uses the result to set the LED intensities and change the LED color.
+ * Turns the "pump" on and off
  * @param command Either "on" or "off". Not case sensitive.
  */
-int toggleLEDs(String command) {
-    String jsonDebugMsg = "{ \"msg\": \"Attempting to toggle LEDs!\", \"command\": \"" + command + "\"}";
-    Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
+int togglePump(String command) {
+    // String jsonDebugMsg = "{ \"msg\": \"Attempting to toggle LEDs!\", \"command\": \"" + command + "\"}";
+    // Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
     if (command.equalsIgnoreCase("on")) {
         turnOnLEDs();
         return 1;
@@ -107,19 +107,19 @@ int toggleLEDs(String command) {
         turnOffLEDs();
         return 0;
     } else {
-        String jsonErrorMsg = "{ \"msg\": \"Toggle did not work...\", \"command\": \"" + command + "\"}";
-        Spark.publish(error_stream, jsonErrorMsg, 60, PRIVATE);
+        String jsonErrorMsg = "{ \"msg\": \"Pump toggle did not work...\", \"command\": \"" + command + "\"}";
+        Spark.publish(error_stream, jsonErrorMsg, 30, PRIVATE);
         return -136;
     }
 }
 
 /**
- * Sets the "pump" speed, here represented by the LED.
+ * Sets the "pump" speed, here represented by the on-board LED.
  * @param speed The provided pump speed
  */
 int setSpeed(String speedUpdate) {
-    String jsonDebugMsg = "{ \"msg\": \"Attempting to set pump speed!\", \"command\": \"" + speedUpdate + "\"}";
-    Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
+    // String jsonDebugMsg = "{ \"msg\": \"Attempting to set pump speed!\", \"command\": \"" + speedUpdate + "\"}";
+    // Spark.publish(debug_stream, jsonDebugMsg, 60, PRIVATE);
     int speedSuccess = -1;
     if(speedUpdate != NULL) {
         // Set the color
@@ -144,7 +144,7 @@ int setSpeed(String speedUpdate) {
             setColor(FULL_BLAST);
             speedSuccess = -2;
             String jsonErrorMsg = "{ \"msg\": \"Invalid color supplied...\", \"speed\": \"" + speedUpdate + "\"}";
-            Spark.publish(error_stream, jsonErrorMsg, 60, PRIVATE);
+            Spark.publish(error_stream, jsonErrorMsg, 30, PRIVATE);
         }
     }
     
@@ -154,41 +154,22 @@ int setSpeed(String speedUpdate) {
     return speedSuccess;
 }
 
-/**
- * Compares the current time against the stop time provided in the last instruction and kills the pump
- * if we've reached quitting time.
- */
-void checkForQuittingTime() {
-    // First of all, there's nothing to do if we aren't pumping. That'll happen if
-    // 1) Stop time < 0 (it starts at -1)
-    // 2) State == Off
-    if(stopTime > 0 || state.equalsIgnoreCase("on") ) {
-        if(Time.now() <= stopTime) {
-            int toggleSuccess = toggleLEDs("off");
-            String jsonErrorMsg = "{ \"msg\": \"Stopping time reached! Tried to stop the pump, but for some reason it did not stop!\","
-                                   " \"state\": \"" + state + "\", \"error_code\": \"" + toggleSuccess + "\"}";
-                                   
-            if(toggleSuccess != 0) {
-                // Pump failed to shut off
-                Spark.publish(error_stream, jsonErrorMsg, 60, PRIVATE);
-            } else {
-                // Success!
-                String jsonSuccessMsg = "{ \"msg\": \"Stopping time reached. Pump deactivated.\", \"state\": \"" + state + "\"}";
-                Spark.publish(error_stream, jsonSuccessMsg, 60, PRIVATE);
-            }
-        }
+int setStopTime(String stateUpdate, String stopTimeUpdate) {
+   if(stateUpdate.equalsIgnoreCase("on") && ( (stopTimeUpdate.toInt() < Time.now()) || (stopTimeUpdate.toInt() < 0) )) {
+        // You need to provide a stop time in the future...
+        String jsonErrorMsg = "{ \"msg\": \"Attempted to set stop time, but time was invalid!\", \"command\": \"" + stopTimeUpdate + "\"}";
+        Spark.publish(error_stream, jsonErrorMsg, 30, PRIVATE);
+        return -Time.now();
+    } else if(stateUpdate.equalsIgnoreCase("off")) {
+        // Reset the stop time
+        stopTime = "0";
+    } else {
+        // Otherwise, go ahead and set the stop time
+        // String jsonDebugMsg = "{ \"msg\": \"Attempting to set stop time!\", \"command\": \"" + stopTimeUpdate + "\"}";
+        // Spark.publish(debug_stream, jsonDebugMsg, 30, PRIVATE);
+        stopTime = stopTimeUpdate;
     }
 }
-
-/**
- * Nothing to do here but see if it's time to stop...
- */
-void loop() {
-    // checkForQuittingTime();
-}
-
-//** Handlers **//
-
 
 /**
  * Publishes the status of the pump
@@ -201,13 +182,52 @@ void publishStatus() {
     String jsonStatusB = "{ \"id\": \"" + pumpID + "\", \"state\": \"" + state + "\", \"stopTime\":\"" + stopTime + "\"}";
     
     if(speed != NULL) {
-        Spark.publish(pump_stream, jsonStatusA, 60, PRIVATE);
+        Spark.publish(pump_stream, jsonStatusA, 30, PRIVATE);
     } else {
-        Spark.publish(pump_stream, jsonStatusB, 60, PRIVATE);
+        Spark.publish(pump_stream, jsonStatusB, 30, PRIVATE);
     }
     
     lastPublish = now;
 }
+
+/**
+ * Compares the current time against the stop time provided in the last instruction and kills the pump
+ * if we've reached quitting time.
+ */
+void checkForQuittingTime() {
+    // First of all, there's nothing to do if we aren't pumping. That'll happen if
+    // 1) Stop time < 1 (it starts at 0)
+    // 2) State == Off
+    if((stopTime.toInt() > 0) && state.equalsIgnoreCase("on") ) {
+        
+        // So we're pumping! We want to shut off if we've reached the stopping time
+        if(Time.now() >= stopTime.toInt()) {
+            // Cut that pump!
+            int toggleSuccess = togglePump("off");
+
+            if(toggleSuccess != 0) {
+                // Pump failed to shut off
+                String jsonErrorMsg = "{ \"msg\": \"Stopping time reached! Tried to stop the pump, but for some reason it did not stop!\","
+                                       " \"state\": \"" + state + "\", \"error_code\": \"" + toggleSuccess + "\"}";
+                Spark.publish(error_stream, jsonErrorMsg, 30, PRIVATE);
+            } else {
+                // Success!
+                String jsonSuccessMsg = "{ \"msg\": \"Stopping time reached. Pump deactivated.\", \"state\": \"" + state + "\"}";
+                Spark.publish(debug_stream, jsonSuccessMsg, 30, PRIVATE);
+                publishStatus();
+            }
+        }
+    }
+}
+
+/**
+ * Nothing to do here but see if it's time to stop...
+ */
+void loop() {
+    checkForQuittingTime();
+}
+
+//** Handlers **//
 
 /*
  * This funtion will turn on/off the LED and set it to the appropriate color
@@ -229,9 +249,9 @@ int pumpCtrl(String command) {
     // Parse the parameters
     String desiredPumpID  = String(strtok(params, ","));
     String stateUpdate    = String(strtok(NULL, ","));
-    int stopTimeUpdate    = atoi(strtok(NULL, ","));
+    String stopTimeUpdate = String(strtok(NULL, ","));
     String speedUpdate    = "";
-    if(stopTimeUpdate > 0) {
+    if(stopTimeUpdate != NULL && stopTimeUpdate.toInt() > 0) {
         // Let's try to avoid null pointer exceptions...
         speedUpdate = "" + String(strtok(NULL, ",")); // Note that the quotes are a workaround for a known issue with the String class
     }
@@ -241,19 +261,13 @@ int pumpCtrl(String command) {
         return -9000;
     }
     
-    // if(stateUpdate.equalsIgnoreCase("on") && (stopTimeUpdate < Time.now())) {
-    //     // You need to provide a stop time in the future...
-    //     return -Time.now();
-    // } else {
-    //     // Otherwise, go ahead and set the stop time
-    //     stopTime = stopTimeUpdate;
-    // }
+    setStopTime(stateUpdate, stopTimeUpdate);
     
     speedSuccess = setSpeed(speedUpdate);
     
     if(state != NULL) {
         // Toggle the LED, if appropriate
-        toggleSuccess = toggleLEDs(stateUpdate);
+        toggleSuccess = togglePump(stateUpdate);
     }
     
     publishStatus();

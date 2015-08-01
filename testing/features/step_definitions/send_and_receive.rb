@@ -1,5 +1,6 @@
 require 'particlerb'
 require 'rspec/expectations'
+require_relative '../../lib/utilities'
 
 Given(/^I post this message to the Rhizome's (.*) path:$/) do |spark_func, msg_table|
   msg = msg_table.raw.first.first
@@ -20,6 +21,9 @@ When(/^I send this message to the Rhizome's Pump (\d+) function:$/) do |pump_id,
   # Unfortunately, order matters... we want ID,STATE,SPEED
   # ID and STATE are required, speed is not.
   @last_args_str = "#{pump_id},#{args_table.rows_hash['state']}"
+
+  @last_args_str += ",#{get_named_time(args_table.rows_hash['stop time'])}" unless args_table.rows_hash['stop time'].nil?
+
   @last_args_str += ",#{args_table.rows_hash['speed']}" unless args_table.rows_hash['speed'].nil?
 
   expect { @rhizome.function('pumps', @last_args_str) }.to_not raise_exception
