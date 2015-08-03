@@ -4,8 +4,8 @@ require 'httparty'
 require 'json'
 
 And(/^the Rhizome has a webhook for Pump (\d+)$/) do |pump_id|
-  if @particle_client.webhooks.any? { |wh| wh.event == "pumps/#{pump_id}" }
-    @pump_webhook = @particle_client.webhooks.find { |wh| wh.event == "pumps/#{pump_id}" }
+  if @particle_client.webhooks.any? { |wh| wh.event == "pumps/#{pump_id}" && wh.url == "#{@global_settings[:endpoint]}/pumps" }
+    @pump_webhook = @particle_client.webhooks.find { |wh| wh.event == "pumps/#{pump_id}" && wh.url == "#{@global_settings[:endpoint]}/pumps" }
   else
     expect {
       @pump_webhook = @particle_client.webhook(
