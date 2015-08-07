@@ -1,3 +1,6 @@
+// This #include statement was automatically added by the Spark IDE.
+#include "Adafruit_ILI9341/Adafruit_ILI9341.h"
+
 // This #include statement was automatically added by the Particle IDE.
 #include "OneWire.h"
 
@@ -56,6 +59,11 @@ int b = 0;
 int c = 0;
 int d = 0;
 
+//use the array instead of independent variables,
+// index is related to Digital pin number, 0 to 0, 1 to 1...etc. 0 and 1 are the temp pins. 
+//int relays[6] = {0,0,0,0,0,0};
+
+
 //object initialization
 DS18B20 ds18b20 = DS18B20(sensor_dig);
 
@@ -77,7 +85,7 @@ void setup() {
     tft.begin();
 
     //start serial communication for debugging
-    Serial.begin(9600);
+    //Serial.begin(9600);
     //define temps as a input
     pinMode(sensor_dig, INPUT);
     pinMode(sensor_analog, INPUT);
@@ -127,9 +135,10 @@ void loop(void) {
     
     //interface and check for updates? or analyze updates sent. .... or the webapp just changes the variables it wants to. 
 
-    disp_vars(celsius, target_temp_1);
-    delay(500);
+    //disp_vars(celsius, target_temp_1);
+    //delay(500);
 
+//TODO need an update for turning on and off the relays??
 
 
 }
@@ -166,7 +175,7 @@ unsigned long testcords(int xc, int yc) {
 	tft.fillScreen(ILI9341_BLACK);
 	unsigned long start = micros();
 	tft.setCursor(0, 0);
-	tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(1);
+	tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(3);
 	tft.println("OHMBREWER!");
 	tft.setTextColor(ILI9341_GREEN);
 
@@ -183,25 +192,37 @@ unsigned long testcords(int xc, int yc) {
 }
 
 //prints out the current variable values on the screen
-unsigned long disp_vars(int p1, int temp_c) {
-	tft.fillScreen(ILI9341_BLACK);
-	unsigned long start = micros();
-	tft.setCursor(0, 0);
-	tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(1);
-	tft.println("OHMBREWER!");
-	tft.setTextColor(ILI9341_GREEN);
+// unsigned long disp_vars(int p1, int temp_c) {
+// 	tft.fillScreen(ILI9341_BLACK);
+// 	unsigned long start = micros();
+// 	tft.setCursor(0, 0);
+// 	tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(3);
+// 	tft.println("OHMBREWER!");
+// 	tft.setTextColor(ILI9341_GREEN);
 
-	tft.setTextSize(3);
-	char probe_1 [24]; 
-	char target_1 [24]; 
+// 	tft.setTextSize(2);
+// 	char probe_1 [24]; 
+// 	char target_1 [24]; 
+// 	char relay_print [24];
+	
 
-	sprintf(probe_1,"current temp is %d C",p1); 
-	tft.println(probe_1);
-	sprintf(target_1,"target temp is %d C",temp_c); 
-	tft.println(target_1);
+// 	sprintf(probe_1,"current temp is %d C",p1); 
+// 	tft.println(probe_1);
+// 	sprintf(target_1,"target temp is %d C",temp_c); 
+// 	tft.println(target_1);
+// 	for(int x=2; x<5; x++){
+// 	    if (relays[x]){
+// 	        sprintf(relay_print,"Pin %d is ON", x); 
+// 	        tft.println(relay_print);
+// 	    }else{
+// 	        sprintf(relay_print,"Pin %d is OFF", x); 
+// 	        tft.println(relay_print);
+// 	    }
+// 	}
 
-	return micros() - start;
-}
+// 	return micros() - start;
+// }
+
 
 // //heartbeat function
 // void flashLED(){
