@@ -1,51 +1,19 @@
-// This #include statement was automatically added by the Spark IDE.
-#include "Adafruit_ILI9341/Adafruit_ILI9341.h"
-
-// This #include statement was automatically added by the Particle IDE.
-#include "OneWire.h"
-
-// This #include statement was automatically added by the Particle IDE.
-#include "ds18b20.h"
-
-// This #include statement was automatically added by the Spark IDE.
-//#include "spark-dallas-temperature/spark-dallas-temperature.h"
-
-// This #include statement was automatically added by the Spark IDE.
+#include "Touch_4Wire/Touch_4Wire.h"
+#include "Adafruit_ILI9341.h"
+#include "Adafruit_ILI9341.h"
 #include "Adafruit_mfGFX/Adafruit_mfGFX.h"
-
-// This #include statement was automatically added by the Spark IDE.
-#include "Adafruit_ILI9341/Adafruit_ILI9341.h"
-
-#include "string.h"
-
-
-
-
-
-//USB DEBUG
-// find usb: ls -la /dev/tty.usb*
-// screen /dev/tty.usbmodem1421 9600
-//QUERY VARIABLES
-//YOU MUST REPLACE THE {DEVICE_ID} AND THE {ACCESS_TOKEN} IN THE URLS BELOW
-//get temp (string) variable
-//curl https://api.spark.io/v1/devices/{DEVICE_ID}/temp?access_token={ACCESS_TOKEN}
-//get "f" variable
-//curl https://api.spark.io/v1/devices/{DEVICE_ID}/f?access_token={ACCESS_TOKEN}
-//EVENTS
-//notified when debug statement happens
-//curl -H "Authorization: Bearer {ACCESS_TOKEN}" https://api.spark.io/v1/events/temperatureInfo
-
-
+// #include "OneWire.h"
+// #include "ds18b20.h"
 
 //temp variable definitions
 int sensor_dig = D1;
 int sensor_analog = D0;
 char temperatureInfo[64];
-float fahrenheit;
-float celsius;
+float fahrenheit = 156;
+float celsius = 68.8889;
 double f;
 
-double target_temp_1 = 0;
+double target_temp_1 = 100; //0;
 double target_temp_2 = 0;
 
 int relay_a = D2; 
@@ -61,29 +29,62 @@ int d = 0;
 
 //use the array instead of independent variables,
 // index is related to Digital pin number, 0 to 0, 1 to 1...etc. 0 and 1 are the temp pins. 
-//int relays[6] = {0,0,0,0,0,0};
+int relays[6] = {0,0,1,0,0,0};
 
 
 //object initialization
-DS18B20 ds18b20 = DS18B20(sensor_dig);
+// DS18B20 ds18b20 = DS18B20(sensor_dig);
 
-//screen init
+// Set the screen object
 Adafruit_ILI9341 tft = Adafruit_ILI9341(D6, D7, A6);
-int x = A1;
-int y = A0;
-int xmin = A7;
-int ymin = A2;
+
+// Using these variables to capture presses
 int xcord;
 int ycord;
+
+// Button stuff
+#define XP A1
+#define YP A0
+#define XM A7
+#define YM A2
+#define MINPRESSURE 50
+#define MAXPRESSURE 4000
+
+// This is calibration data for the raw touch data to the screen coordinates
+#define TS_MINX 500
+#define TS_MINY 300
+#define TS_MAXX 3650
+#define TS_MAXY 3650
+// #define TS_MINX 150
+// #define TS_MINY 130
+// #define TS_MAXX 3800
+// #define TS_MAXY 4000
+// #define TS_MINX 150
+// #define TS_MINY 120
+// #define TS_MAXX 920
+// #define TS_MAXY 940
+
+// For better pressure precision, we need to know the resistance
+// between X+ and X- Use any multimeter to read it
+// In the example it was 285 ohms across the X plate
+TouchScreen ts = TouchScreen(XP, YP, XM, YM, 0); // 285);
+
+#define BUTTONSIZE 60
+#define LEFT 0
+#define RIGHT 240
+#define TOP 0
+#define BOTTOM 320
+#define BUTTONTOP 260
 
 
 //####################################################   temps
 
-//setup runs once when device is powered or rebooted
+/**
+ * Preps any pins or variables that aren't set above. Setup runs once when device is powered or rebooted.
+ */
 void setup() {
+    initScreen();
     
-    tft.begin();
-
     //start serial communication for debugging
     //Serial.begin(9600);
     //define temps as a input
@@ -97,478 +98,334 @@ void setup() {
     //define public variables
     Spark.variable("temp", temperatureInfo, STRING);
     Spark.variable("f", &f, DOUBLE);
-
 	
 }
 
 
-
-
-
-//loop runs over and over while device is powered
-void loop(void) {
+/**
+ * The meat of the program. Runs over and over while device is powered, after setup() has been called.
+ */
+void loop() {
     //do initial search to find all connected 1-Wire devices on the bus
-    if(!ds18b20.search()){
-    Serial.println("No more addresses.");
-    Serial.println();
-    ds18b20.resetsearch();
-   // delay(250);
-    return;
-    }
-    //get temerature data
-    celsius = ds18b20.getTemperature();
-    fahrenheit = ds18b20.convertToFahrenheit(celsius);
+//     if(!ds18b20.search()){
+//     Serial.println("No more addresses.");
+//     Serial.println();
+//     ds18b20.resetsearch();
+//   // delay(250);
+//     return;
+//     }
+    //get temperature data
+    // celsius = ds18b20.getTemperature();
+    // fahrenheit = ds18b20.convertToFahrenheit(celsius);
     //convert data to more useful formats
     f = (double)fahrenheit;
     sprintf(temperatureInfo, "%2.2f", fahrenheit);
     //publish temperature string to any subscribed (listening) devices
-    Spark.publish("temperatureInfo", temperatureInfo);
+    // Spark.publish("temperatureInfo", temperatureInfo);
     //output same string to the debug serial
-    Serial.println(temperatureInfo);
-
-//current execution code for display
-
-    xcord = check_x();
-    ycord = check_y();
-    testcords(xcord,ycord);
-    delay(500);
+    // Serial.println(temperatureInfo);
     
-    //interface and check for updates? or analyze updates sent. .... or the webapp just changes the variables it wants to. 
+    //interface and check for updates? or analyze updates sent. .... or the webapp just changes the variables it wants to.
 
-    //disp_vars(celsius, target_temp_1);
-    //delay(500);
+    // TODO: need an update for turning on and off the relays??
 
-//TODO need an update for turning on and off the relays??
 
+    // Finally, refresh the display
+
+    // xcord = check_x();
+    // ycord = check_y();
+    // testcords(xcord,ycord);
+    captureButtonPress();
+    refreshDisplay();
 
 }
-// FUNCTIONS
+
+/* ============ Tactile Functions ============ */
+
+/**
+ * Captures a button press and does stuff with it.
+ */
+unsigned long captureButtonPress() {
+	unsigned long start = micros();
+	char printx [10];
+	char printy [10];
+	char status [40];
+
+    // Retrieve a point
+    TSPoint p = ts.getPoint();
+    int z = p.z;
+    
+    // we have some minimum pressure we consider 'valid'
+    // pressure of 0 means no pressing!
+    if (z < MINPRESSURE || z > MAXPRESSURE) {
+        displayStatusUpdate("                                        ");
+        return micros() - start;
+    }
+    
+    // Get out of here if no one is touching
+    if (p.z < 0) {
+        displayStatusUpdate("                                        ");
+        return micros() - start;
+    }
+    
+    // Scale from ~0->1000 to tft.width using the calibration #'s
+    p.x = map(p.x, TS_MINX, TS_MAXX, 0, tft.width()) - 35; // This -35 is a dirty hack. We need to fix the scaling to get this working without it.
+    p.y = map(p.y, TS_MINY, TS_MAXY, 0, tft.height());
+    
+    // Each of these should pad out with spaces on the right
+	sprintf(printx, "x is %-5d", p.x);
+	sprintf(printy, "y is %-5d", p.y);
+
+    String statusUpdate = String(printx);
+    statusUpdate.concat(printy);
+    
+    if (p.y >= BUTTONTOP) {
+    
+        if (p.x > 0 && p.x <= BUTTONSIZE) {
+            // +                 12345678901234567890
+            statusUpdate.concat("Pressing +!         ");
+        } else if (p.x > BUTTONSIZE && p.x <= BUTTONSIZE*2) {
+            // -
+            statusUpdate.concat("Pressing -!         ");
+        } else if (p.x > BUTTONSIZE*2 && p.x <= BUTTONSIZE*3) {
+            // Menu
+            statusUpdate.concat("Pressing Menu!      ");
+        } else if (p.x > BUTTONSIZE*3 && p.x <= BUTTONSIZE*4) {
+            // Select
+            statusUpdate.concat("Pressing Select!    ");
+        } else {
+            // Nothing. Weird.
+            statusUpdate.concat("                    ");
+        }
+        
+        // Barf it onto the display...
+        statusUpdate.toCharArray(status, 40);
+        displayStatusUpdate(status);
+    }
+
+    
+	return micros() - start;
+}
+
 
 //checks the x coordinate on screen touch
 int check_x(){
-    pinMode(y, OUTPUT);
-    pinMode(ymin, OUTPUT);
-    pinMode(x,INPUT_PULLUP);
-    pinMode(xmin, INPUT);
+    pinMode(YP, OUTPUT);
+    pinMode(YM, OUTPUT);
+    pinMode(XP,INPUT_PULLUP);
+    pinMode(XM, INPUT);
     
-    digitalWrite(y, HIGH);
-    digitalWrite(ymin, LOW);
+    digitalWrite(YP, HIGH);
+    digitalWrite(YM, LOW);
     delay(10);
-    return analogRead(x);
+    return analogRead(XP);
 }
 
 //checks the y coordinate on screen touch
 int check_y(){
-    pinMode(x, OUTPUT);
-    pinMode(xmin, OUTPUT);
-    pinMode(y,INPUT_PULLUP);
-    pinMode(ymin, INPUT);
+    pinMode(XP, OUTPUT);
+    pinMode(XM, OUTPUT);
+    pinMode(YP,INPUT_PULLUP);
+    pinMode(YM, INPUT);
     
-    digitalWrite(x, HIGH);
-    digitalWrite(xmin, LOW);
+    digitalWrite(XP, HIGH);
+    digitalWrite(XM, LOW);
     delay(10);
-    return analogRead(y);
+    return analogRead(YP);
 }
 
 //prints out the current x and y on the screen
-unsigned long testcords(int xc, int yc) {
-	tft.fillScreen(ILI9341_BLACK);
+unsigned long testcoords(int xc, int yc) {
 	unsigned long start = micros();
-	tft.setCursor(0, 0);
-	tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(3);
-	tft.println("OHMBREWER!");
-	tft.setTextColor(ILI9341_GREEN);
+	char printx [10];
+	char printy [10];
+	char status [21];
 
-	tft.setTextSize(3);
-	char printx [10]; 
-	char printy [10]; 
+    // Each of these should pad out with spaces on the right
+	sprintf(printx, "x is %-5d", xc);
+	sprintf(printy, "y is %-5d", yc);
 
-	sprintf(printx,"x is %d",xc); 
-	tft.println(printx);
-	sprintf(printy,"y is %d",yc); 
-	tft.println(printy);
+    String statusUpdate = String(printx);
+    statusUpdate.concat(printy);
+    statusUpdate.toCharArray(status, 21);
+    
+    displayStatusUpdate(status);
 
 	return micros() - start;
 }
 
-//prints out the current variable values on the screen
-// unsigned long disp_vars(int p1, int temp_c) {
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	unsigned long start = micros();
-// 	tft.setCursor(0, 0);
-// 	tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(3);
-// 	tft.println("OHMBREWER!");
-// 	tft.setTextColor(ILI9341_GREEN);
+/* ============ Display Functions ============ */
 
-// 	tft.setTextSize(2);
-// 	char probe_1 [24]; 
-// 	char target_1 [24]; 
-// 	char relay_print [24];
+//prints out the current x and y on the screen
+unsigned long displayStatusUpdate(char *statusUpdate) {
+	unsigned long start = micros();
+
+	tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
+    tft.setCursor(LEFT, BUTTONTOP - 40);
+	tft.setTextSize(2);
+	tft.println(statusUpdate);
 	
-
-// 	sprintf(probe_1,"current temp is %d C",p1); 
-// 	tft.println(probe_1);
-// 	sprintf(target_1,"target temp is %d C",temp_c); 
-// 	tft.println(target_1);
-// 	for(int x=2; x<5; x++){
-// 	    if (relays[x]){
-// 	        sprintf(relay_print,"Pin %d is ON", x); 
-// 	        tft.println(relay_print);
-// 	    }else{
-// 	        sprintf(relay_print,"Pin %d is OFF", x); 
-// 	        tft.println(relay_print);
-// 	    }
-// 	}
-
-// 	return micros() - start;
-// }
+	return micros() - start;
+}
 
 
-// //heartbeat function
-// void flashLED(){
-// digitalWrite(ledPin, HIGH);
-// delay(500);
-// digitalWrite(ledPin, LOW);
-// delay(500);
-
-// }
-
-// void templed(){
-//   if (celsius < 15 ){
-//       digitalWrite(green, HIGH);
-//       delay(500);
-//       digitalWrite(green, LOW);
-//   }
-//   if (celsius >= 15 && celsius < 25){
-//       digitalWrite(yellow, HIGH);
-//       delay(500);
-//       digitalWrite(yellow, LOW);
-//   }
-//   if (celsius > 25){
-//       digitalWrite(red, HIGH);
-//       delay(500);
-//       digitalWrite(red, LOW);
-//   }
-// }
-
-
-// //##################################################### sceen
-
-
-
-// void setup() {
+/**
+ * Initializes the display screen
+ */
+void initScreen() {
     
-
-
-// 	tft.begin();
-
-
-
-// }
-
-// void loop(void) {
-
-
-//     xcord = check_x();
-//     ycord = check_y();
-//     testcords(xcord,ycord);
-//     delay(500);
-    
-
-// }
-
-
-
-
-
-
-// // UNUSED ###############################################################
-// // 	testFillScreen();
-// // 	delay(500);
-
-// //     testText();
-// // 	delay(500);
-
-// // 	testLines(ILI9341_CYAN);
-// // 	delay(500);
-
-// // 	testFastLines(ILI9341_RED, ILI9341_BLUE);
-// // 	delay(500);
-
-// // 	testRects(ILI9341_GREEN);
-// // 	delay(500);
-
-// // 	testFilledRects(ILI9341_YELLOW, ILI9341_MAGENTA);
-// // 	delay(500);
-
-// // 	testFilledCircles(10, ILI9341_MAGENTA);
-// // 	delay(500);
-
-// // 	testCircles(10, ILI9341_WHITE);
-// // 	delay(500);
-
-// // 	testTriangles();
-// // 	delay(500);
-
-// // 	testFilledTriangles();
-// // 	delay(500);
-
-// // 	testRoundRects();
-// // 	delay(500);
-
-// // 	testFilledRoundRects();
-// // 	delay(500);
-
- 
-// // 	for (uint8_t rotation = 0; rotation<4; rotation++) {
-// // 		tft.setRotation(rotation);
-// // 		testText();
-// // 		delay(2000);
-// // 	}
+    tft.begin();
+    tft.fillScreen(ILI9341_BLACK);
+	drawButtons();
 	
-// // 	delay(5000);
+	// Reset the cursor
+	tft.setCursor(LEFT, TOP);
+}
 
-// unsigned long testFillScreen() {
-// 	unsigned long start = micros();
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	tft.fillScreen(ILI9341_RED);
-// 	tft.fillScreen(ILI9341_GREEN);
-// 	tft.fillScreen(ILI9341_BLUE);
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	return micros() - start;
-// }
+/**
+ * Initializes the display screen
+ */
+void drawButtons() {
+    
+	tft.setTextColor(ILI9341_WHITE);
+    
+    // make the buttons
+    tft.fillRect(LEFT, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_BLACK);
+    tft.fillRect(BUTTONSIZE, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_BLACK);
+    tft.fillRect(BUTTONSIZE*2, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_BLACK);
+    tft.fillRect(BUTTONSIZE*3, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_BLACK);
+    tft.drawRect(LEFT, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_GREEN);
+    tft.drawRect(BUTTONSIZE, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_GREEN);
+    tft.drawRect(BUTTONSIZE*2, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_GREEN);
+    tft.drawRect(BUTTONSIZE*3, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_GREEN);
+	
+	// Add symbols to the buttons
+	tft.setTextSize(4);
+	tft.setCursor(LEFT + 20, BUTTONTOP + 15);
+	tft.print("+");
+	tft.setCursor(BUTTONSIZE + 20, BUTTONTOP + 15);
+	tft.print("-");
+	
+	tft.setTextSize(2);
+	tft.setCursor((BUTTONSIZE*2) + 7, BUTTONTOP + 20);
+	tft.print("Menu");
+	tft.setTextSize(2);
+	tft.setCursor((BUTTONSIZE*3) + 14, BUTTONTOP + 20);
+	tft.print("Sel");
+	
+	tft.setTextColor(ILI9341_GREEN);
+}
 
-// unsigned long testText() {
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	unsigned long start = micros();
-// 	tft.setCursor(0, 0);
-// 	tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(1);
+/**
+ * Refreshes/redraws the touchscreen display
+ * @returns Time it took to run the function
+ */
+unsigned long refreshDisplay() {
+	unsigned long start = micros();
+	
+    displayHeader();
+    displayTemps();
+    displayRelays();
+    
+    // 500 seems like a good refresh delay
+    delay(500);
 
-// 	tft.println("Hello World!");
-// 	tft.setTextColor(ILI9341_YELLOW); tft.setTextSize(2);
-// 	tft.println(1234.56);
-// 	tft.setTextColor(ILI9341_RED);    tft.setTextSize(3);
-// 	tft.println(0xDEADBEEF, HEX);
-// //	tft.println();
-// 	tft.setTextColor(ILI9341_GREEN);
-// 	tft.setTextSize(3);
-// 	tft.println("Groop");
-// 	tft.setTextSize(2);
-// 	tft.println("I implore thee,");
-// 	tft.setTextSize(1);
-// 	tft.println("my foonting turlingdromes.");
-// 	tft.println("And hooptiously drangle me");
-// 	tft.println("with crinkly bindlewurdles,");
-// 	tft.println("Or I will rend thee");
-// 	tft.println("in the gobberwarts");
-// 	tft.println("with my blurglecruncheon,");
-// 	tft.println("see if I don't!");
+	return micros() - start;
+}
 
-// 	return micros() - start;
-// }
+/**
+ * Prints the status information for our current relays onto the touchscreen
+ * @returns Time it took to run the function
+ */
+unsigned long displayRelays() {
+	unsigned long start = micros();
+	char relay_id[2];
+    
+	tft.println("====== Relays ======");
+	for(int x=2; x<6; x++){
+	    
+	    // Print a fancy identifier
+        tft.print(" [");
+        tft.setTextColor(ILI9341_WHITE);
+        
+        sprintf(relay_id,"%d", x-1);
+        tft.print(relay_id);
+        
+        tft.setTextColor(ILI9341_GREEN);
+        tft.print("]:");
+        
+        // Print the conditional status
+	    if (relays[x]){
+	        tft.setTextColor(ILI9341_YELLOW);
+	        tft.println(" ON");
+	        
+	    } else {
+	        tft.setTextColor(ILI9341_RED);
+	        tft.println(" OFF");
+	    }
+	    
+	    // Always reset to green
+	    tft.setTextColor(ILI9341_GREEN);
+	}
 
-// unsigned long testLines(uint16_t color) {
-// 	unsigned long start, t;
-// 	int           x1, y1, x2, y2,
-// 		w = tft.width(),
-// 		h = tft.height();
+	return micros() - start;
+}
 
-// 	tft.fillScreen(ILI9341_BLACK);
+/**
+ * Prints the temperature information for our sensors onto the touchscreen
+ * @returns Time it took to run the function
+ */
+unsigned long displayTemps() {
+	unsigned long start = micros();
+	char probe_1 [24]; 
+	char target_1 [24];
+	
+	sprintf(probe_1,"%2.2f",celsius);
+	sprintf(target_1,"%2.2f",target_temp_1); 
+	
+	tft.setTextColor(ILI9341_GREEN);
+	tft.setTextSize(2);
+	tft.println("");
+	tft.print("= Temperature (");
+	tft.write(247); // Degree symbol
+	tft.println("C) =");
 
-// 	x1 = y1 = 0;
-// 	y2 = h - 1;
-// 	start = micros();
-// 	for (x2 = 0; x2<w; x2 += 6) tft.drawLine(x1, y1, x2, y2, color);
-// 	x2 = w - 1;
-// 	for (y2 = 0; y2<h; y2 += 6) tft.drawLine(x1, y1, x2, y2, color);
-// 	t = micros() - start; // fillScreen doesn't count against timing
+    // Print out the current temp
+    tft.print(" Current: ");
+    if(celsius > target_temp_1) {
+	    tft.setTextColor(ILI9341_RED);
+    } else if(celsius < target_temp_1) {
+	    tft.setTextColor(ILI9341_BLUE);
+    } else {
+	    tft.setTextColor(ILI9341_YELLOW);
+    }
+	tft.println(probe_1);
+    
+    // Print out the target temp
+	tft.setTextColor(ILI9341_GREEN);
+    tft.print(" Target:  ");
+    tft.setTextColor(ILI9341_YELLOW);
+	tft.println(target_1);
+    
+    // Reset to green
+	tft.setTextColor(ILI9341_GREEN);
+	
+	// Add a wee space
+	tft.println("");
 
-// 	tft.fillScreen(ILI9341_BLACK);
+	return micros() - start;
+}
 
-// 	x1 = w - 1;
-// 	y1 = 0;
-// 	y2 = h - 1;
-// 	start = micros();
-// 	for (x2 = 0; x2<w; x2 += 6) tft.drawLine(x1, y1, x2, y2, color);
-// 	x2 = 0;
-// 	for (y2 = 0; y2<h; y2 += 6) tft.drawLine(x1, y1, x2, y2, color);
-// 	t += micros() - start;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-
-// 	x1 = 0;
-// 	y1 = h - 1;
-// 	y2 = 0;
-// 	start = micros();
-// 	for (x2 = 0; x2<w; x2 += 6) tft.drawLine(x1, y1, x2, y2, color);
-// 	x2 = w - 1;
-// 	for (y2 = 0; y2<h; y2 += 6) tft.drawLine(x1, y1, x2, y2, color);
-// 	t += micros() - start;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-
-// 	x1 = w - 1;
-// 	y1 = h - 1;
-// 	y2 = 0;
-// 	start = micros();
-// 	for (x2 = 0; x2<w; x2 += 6) tft.drawLine(x1, y1, x2, y2, color);
-// 	x2 = 0;
-// 	for (y2 = 0; y2<h; y2 += 6) tft.drawLine(x1, y1, x2, y2, color);
-
-// 	return micros() - start;
-// }
-
-// unsigned long testFastLines(uint16_t color1, uint16_t color2) {
-// 	unsigned long start;
-// 	int           x, y, w = tft.width(), h = tft.height();
-
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	start = micros();
-// 	for (y = 0; y<h; y += 5) tft.drawFastHLine(0, y, w, color1);
-// 	for (x = 0; x<w; x += 5) tft.drawFastVLine(x, 0, h, color2);
-
-// 	return micros() - start;
-// }
-
-// unsigned long testRects(uint16_t color) {
-// 	unsigned long start;
-// 	int           n, i, i2,
-// 		cx = tft.width() / 2,
-// 		cy = tft.height() / 2;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	n = min(tft.width(), tft.height());
-// 	start = micros();
-// 	for (i = 2; i<n; i += 6) {
-// 		i2 = i / 2;
-// 		tft.drawRect(cx - i2, cy - i2, i, i, color);
-// 	}
-
-// 	return micros() - start;
-// }
-
-// unsigned long testFilledRects(uint16_t color1, uint16_t color2) {
-// 	unsigned long start, t = 0;
-// 	int           n, i, i2,
-// 		cx = tft.width() / 2 - 1,
-// 		cy = tft.height() / 2 - 1;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	n = min(tft.width(), tft.height());
-// 	for (i = n; i>0; i -= 6) {
-// 		i2 = i / 2;
-// 		start = micros();
-// 		tft.fillRect(cx - i2, cy - i2, i, i, color1);
-// 		t += micros() - start;
-// 		// Outlines are not included in timing results
-// 		tft.drawRect(cx - i2, cy - i2, i, i, color2);
-// 	}
-
-// 	return t;
-// }
-
-// unsigned long testFilledCircles(uint8_t radius, uint16_t color) {
-// 	unsigned long start;
-// 	int x, y, w = tft.width(), h = tft.height(), r2 = radius * 2;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	start = micros();
-// 	for (x = radius; x<w; x += r2) {
-// 		for (y = radius; y<h; y += r2) {
-// 			tft.fillCircle(x, y, radius, color);
-// 		}
-// 	}
-
-// 	return micros() - start;
-// }
-
-// unsigned long testCircles(uint8_t radius, uint16_t color) {
-// 	unsigned long start;
-// 	int           x, y, r2 = radius * 2,
-// 		w = tft.width() + radius,
-// 		h = tft.height() + radius;
-
-// 	// Screen is not cleared for this one -- this is
-// 	// intentional and does not affect the reported time.
-// 	start = micros();
-// 	for (x = 0; x<w; x += r2) {
-// 		for (y = 0; y<h; y += r2) {
-// 			tft.drawCircle(x, y, radius, color);
-// 		}
-// 	}
-
-// 	return micros() - start;
-// }
-
-// unsigned long testTriangles() {
-// 	unsigned long start;
-// 	int           n, i, cx = tft.width() / 2 - 1,
-// 		cy = tft.height() / 2 - 1;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	n = min(cx, cy);
-// 	start = micros();
-// 	for (i = 0; i<n; i += 5) {
-// 		tft.drawTriangle(
-// 			cx, cy - i, // peak
-// 			cx - i, cy + i, // bottom left
-// 			cx + i, cy + i, // bottom right
-// 			tft.Color565(0, 0, i));
-// 	}
-
-// 	return micros() - start;
-// }
-
-// unsigned long testFilledTriangles() {
-// 	unsigned long start, t = 0;
-// 	int           i, cx = tft.width() / 2 - 1,
-// 		cy = tft.height() / 2 - 1;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	start = micros();
-// 	for (i = min(cx, cy); i>10; i -= 5) {
-// 		start = micros();
-// 		tft.fillTriangle(cx, cy - i, cx - i, cy + i, cx + i, cy + i,
-// 			tft.Color565(0, i, i));
-// 		t += micros() - start;
-// 		tft.drawTriangle(cx, cy - i, cx - i, cy + i, cx + i, cy + i,
-// 			tft.Color565(i, i, 0));
-// 	}
-
-// 	return t;
-// }
-
-// unsigned long testRoundRects() {
-// 	unsigned long start;
-// 	int           w, i, i2,
-// 		cx = tft.width() / 2 - 1,
-// 		cy = tft.height() / 2 - 1;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	w = min(tft.width(), tft.height());
-// 	start = micros();
-// 	for (i = 0; i<w; i += 6) {
-// 		i2 = i / 2;
-// 		tft.drawRoundRect(cx - i2, cy - i2, i, i, i / 8, tft.Color565(i, 0, 0));
-// 	}
-
-// 	return micros() - start;
-// }
-
-// unsigned long testFilledRoundRects() {
-// 	unsigned long start;
-// 	int           i, i2,
-// 		cx = tft.width() / 2 - 1,
-// 		cy = tft.height() / 2 - 1;
-
-// 	tft.fillScreen(ILI9341_BLACK);
-// 	start = micros();
-// 	for (i = min(tft.width(), tft.height()); i>20; i -= 6) {
-// 		i2 = i / 2;
-// 		tft.fillRoundRect(cx - i2, cy - i2, i, i, i / 8, tft.Color565(0, i, 0));
-// 	}
-
-// 	return micros() - start;
-// }
-
+/**
+ * Prints the "Ohmbrewer" title onto the touchscreen
+ * @returns Time it took to run the function
+ */
+unsigned long displayHeader() {
+	unsigned long start = micros();
+	tft.setCursor(0, 0);
+	tft.setTextColor(ILI9341_WHITE);  
+	tft.setTextSize(3);
+	tft.println("  OHMBREWER");
+	return micros() - start;
+}
 
