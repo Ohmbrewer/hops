@@ -1,5 +1,5 @@
+#include "Ohmbrewer_Rhizome_Pump.h"
 #include "Touch_4Wire/Touch_4Wire.h"
-#include "Adafruit_ILI9341.h"
 #include "Adafruit_ILI9341.h"
 #include "Adafruit_mfGFX/Adafruit_mfGFX.h"
 // #include "OneWire.h"
@@ -29,7 +29,7 @@ int d = 0;
 
 //use the array instead of independent variables,
 // index is related to Digital pin number, 0 to 0, 1 to 1...etc. 0 and 1 are the temp pins. 
-int relays[6] = {0,0,1,0,0,0};
+int relays[6] = {0,0,0,0,0,0};
 
 
 //object initialization
@@ -77,6 +77,9 @@ TouchScreen ts = TouchScreen(XP, YP, XM, YM, 0); // 285);
 #define BUTTONTOP 260
 
 
+
+Ohmbrewer_Pump ob_p = Ohmbrewer_Pump("1");
+
 //####################################################   temps
 
 /**
@@ -98,6 +101,13 @@ void setup() {
     //define public variables
     Spark.variable("temp", temperatureInfo, STRING);
     Spark.variable("f", &f, DOUBLE);
+    
+    //set LED pins to outputs
+    RGB.control(true);
+    Spark.function("pumps", relayCtrl);
+    
+    // For good measure, let's also make sure the LED is off when we start:
+    ob_p.refreshLEDs();
 	
 }
 
@@ -129,16 +139,28 @@ void loop() {
 
     // TODO: need an update for turning on and off the relays??
 
+    // Do relay stuff. Flaunt it if ya got it.
+    ob_p.checkForQuittingTime();
+    relays[2] = ob_p.isRelayOn();
 
     // Finally, refresh the display
 
     // xcord = check_x();
     // ycord = check_y();
     // testcords(xcord,ycord);
+    
     captureButtonPress();
     refreshDisplay();
 
 }
+
+// Handlers:
+int relayCtrl(String command) {
+    // Toggle the pump, etc.
+    ob_p.pumpCtrl(command);
+}
+
+
 
 /* ============ Tactile Functions ============ */
 
@@ -256,7 +278,11 @@ unsigned long testcoords(int xc, int yc) {
 
 /* ============ Display Functions ============ */
 
-//prints out the current x and y on the screen
+/**
+ * Prints out a status message in the two rows above the buttons.
+ * @param char* statusUpdate The status message to display. 40 characters or less.
+ * @returns Time it took to run the function
+ */
 unsigned long displayStatusUpdate(char *statusUpdate) {
 	unsigned long start = micros();
 
@@ -287,7 +313,7 @@ void initScreen() {
  */
 void drawButtons() {
     
-	tft.setTextColor(ILI9341_WHITE);
+	tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
     
     // make the buttons
     tft.fillRect(LEFT, BUTTONTOP, BUTTONSIZE, BUTTONSIZE, ILI9341_BLACK);
@@ -313,7 +339,7 @@ void drawButtons() {
 	tft.setCursor((BUTTONSIZE*3) + 14, BUTTONTOP + 20);
 	tft.print("Sel");
 	
-	tft.setTextColor(ILI9341_GREEN);
+	tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
 }
 
 /**
@@ -346,26 +372,26 @@ unsigned long displayRelays() {
 	    
 	    // Print a fancy identifier
         tft.print(" [");
-        tft.setTextColor(ILI9341_WHITE);
+        tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
         
         sprintf(relay_id,"%d", x-1);
         tft.print(relay_id);
         
-        tft.setTextColor(ILI9341_GREEN);
+        tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
         tft.print("]:");
         
         // Print the conditional status
 	    if (relays[x]){
-	        tft.setTextColor(ILI9341_YELLOW);
-	        tft.println(" ON");
+	        tft.setTextColor(ILI9341_YELLOW, ILI9341_BLACK);
+	        tft.println(" ON ");
 	        
 	    } else {
-	        tft.setTextColor(ILI9341_RED);
+	        tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
 	        tft.println(" OFF");
 	    }
 	    
 	    // Always reset to green
-	    tft.setTextColor(ILI9341_GREEN);
+	    tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
 	}
 
 	return micros() - start;
@@ -383,7 +409,7 @@ unsigned long displayTemps() {
 	sprintf(probe_1,"%2.2f",celsius);
 	sprintf(target_1,"%2.2f",target_temp_1); 
 	
-	tft.setTextColor(ILI9341_GREEN);
+	tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
 	tft.setTextSize(2);
 	tft.println("");
 	tft.print("= Temperature (");
@@ -393,22 +419,22 @@ unsigned long displayTemps() {
     // Print out the current temp
     tft.print(" Current: ");
     if(celsius > target_temp_1) {
-	    tft.setTextColor(ILI9341_RED);
+	    tft.setTextColor(ILI9341_RED, ILI9341_BLACK);
     } else if(celsius < target_temp_1) {
-	    tft.setTextColor(ILI9341_BLUE);
+	    tft.setTextColor(ILI9341_BLUE, ILI9341_BLACK);
     } else {
-	    tft.setTextColor(ILI9341_YELLOW);
+	    tft.setTextColor(ILI9341_YELLOW, ILI9341_BLACK);
     }
 	tft.println(probe_1);
     
     // Print out the target temp
 	tft.setTextColor(ILI9341_GREEN);
     tft.print(" Target:  ");
-    tft.setTextColor(ILI9341_YELLOW);
+    tft.setTextColor(ILI9341_YELLOW, ILI9341_BLACK);
 	tft.println(target_1);
     
     // Reset to green
-	tft.setTextColor(ILI9341_GREEN);
+	tft.setTextColor(ILI9341_GREEN, ILI9341_BLACK);
 	
 	// Add a wee space
 	tft.println("");
@@ -423,9 +449,8 @@ unsigned long displayTemps() {
 unsigned long displayHeader() {
 	unsigned long start = micros();
 	tft.setCursor(0, 0);
-	tft.setTextColor(ILI9341_WHITE);  
+	tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);  
 	tft.setTextSize(3);
 	tft.println("  OHMBREWER");
 	return micros() - start;
 }
-
